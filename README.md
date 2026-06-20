@@ -198,6 +198,305 @@ USERS_TABLE=users LISTINGS_TABLE=listings ./bootstrap
 }
 ```
 
+## API Documentation
+
+### Data Schemas
+
+#### User
+The User object represents a user in the system.
+
+**Schema:**
+```json
+{
+  "id": "string (unique identifier, generated if not provided)",
+  "name": "string (required)",
+  "email": "string (required, valid email format)",
+  "username": "string (required)",
+  "birthdate": "string (required, format YYYY-MM-DD)",
+  "creationdate": "string (ISO 8601 timestamp, automatically set on creation)"
+}
+```
+
+#### Listing
+The Listing object represents a real estate listing.
+
+**Schema:**
+```json
+{
+  "listing_id": "string or number (unique identifier, generated if not provided)",
+  "slug": "string (required, URL-friendly identifier)",
+  "url": "string (required, canonical URL)",
+  "language": "string (required, ISO 639-1 language code)",
+  "title": "string (required)",
+  "property_type": "string (required, e.g., apartment, house, land)",
+  "subtype": "string (optional, subtype of property)",
+  "operation_type": "string (required, e.g., sale, rent)",
+  "publication_status": "string (required, e.g., active, inactive, sold)",
+  "location": {
+    "country": "string (required)",
+    "state": "string (required)",
+    "city": "string (required)",
+    "neighborhood": "string (optional)",
+    "address": "string (required)",
+    "stratum": "integer (required, 1-6)",
+    "coordinates": {
+      "lat": "number (required, latitude)",
+      "lng": "number (required, longitude)"
+    }
+  },
+  "pricing": {
+    "sale_price": "number (optional, for sale operations)",
+    "rent_price": "number (optional, for rent operations)",
+    "admin_fee": "number (optional)",
+    "taxes": "number (optional)",
+    "currency": "string (required, ISO 4217 currency code)",
+    "display_price_text": "string (optional, formatted price for display)"
+  },
+  "areas": {
+    "land_area_m2": "number (optional)",
+    "built_area_m2": "number (optional)",
+    "private_area_m2": "number (optional)",
+    "lot_area_m2": "number (optional)",
+    "front_m": "number (optional)",
+    "back_m": "number (optional)"
+  },
+  "layout": {
+    "bedrooms": "integer (optional)",
+    "bathrooms": "integer (optional)",
+    "half_bathrooms": "integer (optional)",
+    "parking_spaces": "integer (optional)",
+    "floors": "integer (optional)",
+    "unit_floor": "integer (optional)"
+  },
+  "structure": {
+    "year_built": "integer (optional)",
+    "age_years": "integer (optional)",
+    "construction_quality": "string (optional, e.g., excellent, good, fair)",
+    "conservation_status": "string (optional, e.g., excellent, good, fair)",
+    "terrain_type": "string (optional, e.g., flat, sloped)",
+    "structure_type": "string (optional, e.g., reinforced_concrete, wood)",
+    "built_levels": "integer (optional)"
+  },
+  "features": {
+    "indoor": "array of strings (optional)",
+    "outdoor": "array of strings (optional)",
+    "commercial": "array of strings (optional)",
+    "project": "array of strings (optional)"
+  },
+  "media": {
+    "photos": "array of strings (URLs, optional)",
+    "photo_count": "integer (optional, count of photos)",
+    "has_map": "boolean (optional)",
+    "has_video": "boolean (optional)",
+    "has_floorplans": "boolean (optional)",
+    "has_virtual_tour_360": "boolean (optional)"
+  },
+  "commercial": {
+    "agent_name": "string (optional)",
+    "office_name": "string (optional)",
+    "phone": "string (optional)",
+    "email": "string (optional)",
+    "whatsapp_link": "string (optional)",
+    "office_hours": "string (optional)"
+  },
+  "metadata": {
+    "updated_at": "string (ISO 8601 timestamp, automatically updated)",
+    "updated_age_text": "string (optional, human-readable update time)",
+    "breadcrumbs": "array of strings (optional, for navigation)",
+    "source_system": "string (optional, source of the listing data)"
+  }
+}
+```
+
+### Example Requests and Responses
+
+#### Users
+
+**GET /users** (List all users)
+- Request: No body
+- Response (200 OK):
+```json
+[
+  {
+    "id": "a1b2c3d4-e5f6-7890-g1h2-i3j4k5l6m7n8",
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "username": "johndoe",
+    "birthdate": "1990-01-01",
+    "creationdate": "2026-06-20T10:00:00Z"
+  }
+]
+```
+
+**GET /users/{id}** (Get user by ID)
+- Request: No body
+- Response (200 OK):
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-g1h2-i3j4k5l6m7n8",
+  "name": "John Doe",
+  "email": "john.doe@example.com",
+  "username": "johndoe",
+  "birthdate": "1990-01-01",
+  "creationdate": "2026-06-20T10:00:00Z"
+}
+```
+
+**POST /users** (Create a user)
+- Request body:
+```json
+{
+  "name": "Jane Smith",
+  "email": "jane.smith@example.com",
+  "username": "janesmith",
+  "birthdate": "1992-05-15"
+}
+```
+- Response (201 Created):
+```json
+{
+  "id": "b2c3d4e5-f6g7-8901-h2i3-j4k5l6m7n8o9",
+  "name": "Jane Smith Updated",
+  "email": "jane.smith.updated@example.com",
+  "username": "janesmithupdated",
+  "birthdate": "1992-05-15",
+  "creationdate": "2026-06-20T10:05:00Z"
+}
+```
+
+**PUT /users/{id}** (Update a user)
+- Request body:
+```json
+{
+  "name": "Jane Smith Updated",
+  "email": "jane.smith.updated@example.com",
+  "username": "janesmithupdated",
+  "birthdate": "1992-05-15"
+}
+```
+- Response (200 OK):
+```json
+{
+  "id": "b2c3d4e5-f6g7-8901-h2i3-j4k5l6m7n8o9",
+  "name": "Jane Smith Updated",
+  "email": "jane.smith.updated@example.com",
+  "username": "janesmithupdated",
+  "birthdate": "1992-05-15",
+  "creationdate": "2026-06-20T10:05:00Z"
+}
+```
+
+**DELETE /users/{id}** (Delete a user)
+- Request: No body
+- Response (204 No Content): (empty body)
+
+#### Listings
+
+**GET /listings** (List all listings)
+- Request: No body
+- Response (200 OK): Array of listing objects (see example below)
+
+**GET /listings/{id}** (Get listing by ID)
+- Request: No body
+- Response (200 OK):
+```json
+{
+  "listing_id": "c21-apartment-bogota",
+  "slug": "c21-apartment-bogota",
+  "url": "https://example.com/listings/c21-apartment-bogota",
+  "language": "es",
+  "title": "Apartamento en Bogotá",
+  "property_type": "apartment",
+  "subtype": "standard",
+  "operation_type": "sale",
+  "publication_status": "active",
+  "location": {
+    "country": "Colombia",
+    "state": "Bogota",
+    "city": "Bogota",
+    "neighborhood": "Chicó",
+    "address": "Calle 100",
+    "stratum": 5,
+    "coordinates": { "lat": 4.678, "lng": -74.048 }
+  },
+  "pricing": {
+    "sale_price": 500000000,
+    "rent_price": 0,
+    "admin_fee": 300000,
+    "taxes": 1500000,
+    "currency": "COP",
+    "display_price_text": "$500,000,000 COP"
+  },
+  "areas": {
+    "land_area_m2": 0,
+    "built_area_m2": 85,
+    "private_area_m2": 80,
+    "lot_area_m2": 0,
+    "front_m": 0,
+    "back_m": 0
+  },
+  "layout": {
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "half_bathrooms": 1,
+    "parking_spaces": 2,
+    "floors": 1,
+    "unit_floor": 4
+  },
+  "structure": {
+    "year_built": 2018,
+    "age_years": 8,
+    "construction_quality": "excellent",
+    "conservation_status": "excellent",
+    "terrain_type": "flat",
+    "structure_type": "reinforced_concrete",
+    "built_levels": 5
+  },
+  "features": {
+    "indoor": ["elevator", "balcony"],
+    "outdoor": ["gym", "security_24_7"],
+    "commercial": [],
+    "project": []
+  },
+  "media": {
+    "photos": ["https://example.com/img1.jpg"],
+    "photo_count": 1,
+    "has_map": true,
+    "has_video": false,
+    "has_floorplans": true,
+    "has_virtual_tour_360": false
+  },
+  "commercial": {
+    "agent_name": "Juan Perez",
+    "office_name": "C21 Colombia Centro",
+    "phone": "+573000000000",
+    "email": "juan.perez@c21colombia.com",
+    "whatsapp_link": "https://wa.me/573000000000",
+    "office_hours": "9:00 - 18:00"
+  },
+  "metadata": {
+    "updated_at": "2026-06-19T20:00:00Z",
+    "updated_age_text": "Updated recently",
+    "breadcrumbs": ["Colombia", "Bogota", "Venta", "Apartamento"],
+    "source_system": "century21colombia"
+  }
+}
+```
+
+**POST /listings** (Create a listing)
+- Request body: (same as the example above without listing_id if auto-generated)
+- Response (201 Created): Returns the created listing with generated listing_id.
+
+**PUT /listings/{id}** (Update a listing)
+- Request body: (same as above, can modify fields)
+- Response (200 OK): Returns the updated listing.
+
+**DELETE /listings/{id}** (Delete a listing)
+- Request: No body
+- Response (204 No Content): (empty body)
+
+Note: The listing_id can be provided as a string or number in the path; the service will normalize it.
+
 ## Project Structure
 
 ```text
