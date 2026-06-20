@@ -67,11 +67,13 @@ zip lambda-handler.zip bootstrap
 ```
 
 ### On Windows (PowerShell)
+[Guide](https://github.com/aws/aws-lambda-go)
 ```powershell
-$env:GOOS="linux"
-$env:GOARCH="amd64"
+$env:GOOS = "linux"
+$env:GOARCH = "amd64"
+$env:CGO_ENABLED = "0"
 go build -o bootstrap main.go
-Compress-Archive -Path bootstrap -DestinationPath lambda-handler.zip -Force
+~\Go\Bin\build-lambda-zip.exe -o lambda-handler.zip bootstrap
 ```
 
 ## Configuration
@@ -222,8 +224,10 @@ rs-lambda-go/
 └── main.go
 ```
 
-## Security
+## Security & Error Handling
 
-- **Payload Validation**: The service layer validates listing and user formats (required fields, value ranges, type validation).
+- **Error Sanitization (No Data Leaking)**: Internal database errors, connection faults, and trace logs are captured internally. The client receives only sanitized JSON payloads containing standard codes (`BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `METHOD_NOT_ALLOWED`, `INTERNAL_SERVER_ERROR`) and safe, generic messages.
+- **Production-Ready Logging**: Emits concise logs to standard output with structured severity headers (`[INFO]`, `[WARN]`, `[ERROR]`). Each log event embeds the API Gateway `RequestID` correlation identifier to simplify debugging and log tracking in CloudWatch.
+- **Payload Validation**: The service layer validates required attributes and format rules (such as checking email formats and language ranges) before executing DynamoDB commands.
 - **Database Write Guard**: The database repositories use conditional expressions (`attribute_not_exists`) on `Create` and (`attribute_exists`) on `Delete` to prevent duplicate creations or deletion of non-existent keys.
 - **Cross-Origin Resource Sharing (CORS)**: All controllers return HTTP headers allowing headers and methods standard to REST API specifications across any origin.

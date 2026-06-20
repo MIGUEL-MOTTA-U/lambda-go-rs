@@ -27,10 +27,6 @@ type UserController struct {
 	service UserService
 }
 
-type errorResponse struct {
-	Message string `json:"message"`
-}
-
 func NewUserController(service UserService) *UserController {
 	return &UserController{service: service}
 }
@@ -42,77 +38,74 @@ func (c UserController) HandleRequest(ctx context.Context, req events.APIGateway
 
 	switch {
 	case method == http.MethodGet && path == "/users":
-		return c.listUsers(ctx)
+		return c.listUsers(ctx, req)
 	case method == http.MethodGet && isUserIDPath(path):
-		return c.getUser(ctx, idFromRequest(path, id))
+		return c.getUser(ctx, req, idFromRequest(path, id))
 	case method == http.MethodPost && path == "/users":
-		return c.createUser(ctx, req.Body)
+		return c.createUser(ctx, req)
 	case method == http.MethodPut && isUserIDPath(path):
-		return c.updateUser(ctx, idFromRequest(path, id), req.Body)
+		return c.updateUser(ctx, req, idFromRequest(path, id))
 	case method == http.MethodDelete && isUserIDPath(path):
-		return c.deleteUser(ctx, idFromRequest(path, id))
+		return c.deleteUser(ctx, req, idFromRequest(path, id))
 	case path == "/users" || strings.HasPrefix(path, "/users/"):
-		return jsonResponse(http.StatusMethodNotAllowed, errorResponse{Message: "method not allowed"})
+		return logAndBuildError(req, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil), nil
 	default:
-		return jsonResponse(http.StatusNotFound, errorResponse{Message: "route not found"})
+		return logAndBuildError(req, http.StatusNotFound, "NOT_FOUND", "route not found", nil), nil
 	}
 }
 
-func (c UserController) listUsers(ctx context.Context) (events.APIGatewayV2HTTPResponse, error) {
+func (c UserController) listUsers(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	users, err := c.service.ListUsers(ctx)
 	if err != nil {
-		return serverError(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusOK, users)
+	return buildSuccessResponse(req, http.StatusOK, users)
 }
 
-func (c UserController) getUser(ctx context.Context, id string) (events.APIGatewayV2HTTPResponse, error) {
+func (c UserController) getUser(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayV2HTTPResponse, error) {
 	user, err := c.service.GetUser(ctx, id)
 	if err != nil {
-		return errorToResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusOK, user)
+	return buildSuccessResponse(req, http.StatusOK, user)
 }
 
-func (c UserController) createUser(ctx context.Context, body string) (events.APIGatewayV2HTTPResponse, error) {
-	user, err := decodeUser(body)
+func (c UserController) createUser(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	user, err := decodeUser(req.Body)
 	if err != nil {
-		return jsonResponse(http.StatusBadRequest, errorResponse{Message: err.Error()})
+		return logAndBuildError(req, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON request body", err), nil
 	}
 
 	createdUser, err := c.service.CreateUser(ctx, user)
 	if err != nil {
-		return errorToResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusCreated, createdUser)
+	return buildSuccessResponse(req, http.StatusCreated, createdUser)
 }
 
-func (c UserController) updateUser(ctx context.Context, id string, body string) (events.APIGatewayV2HTTPResponse, error) {
-	user, err := decodeUser(body)
+func (c UserController) updateUser(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayV2HTTPResponse, error) {
+	user, err := decodeUser(req.Body)
 	if err != nil {
-		return jsonResponse(http.StatusBadRequest, errorResponse{Message: err.Error()})
+		return logAndBuildError(req, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON request body", err), nil
 	}
 
 	updatedUser, err := c.service.UpdateUser(ctx, id, user)
 	if err != nil {
-		return errorToResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusOK, updatedUser)
+	return buildSuccessResponse(req, http.StatusOK, updatedUser)
 }
 
-func (c UserController) deleteUser(ctx context.Context, id string) (events.APIGatewayV2HTTPResponse, error) {
+func (c UserController) deleteUser(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayV2HTTPResponse, error) {
 	if err := c.service.DeleteUser(ctx, id); err != nil {
-		return errorToResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return events.APIGatewayV2HTTPResponse{
-		StatusCode: http.StatusNoContent,
-		Headers:    defaultHeaders(),
-	}, nil
+	return buildSuccessResponse(req, http.StatusNoContent, nil)
 }
 
 func decodeUser(body string) (model.User, error) {
@@ -130,79 +123,20 @@ func decodeUser(body string) (model.User, error) {
 	return user, nil
 }
 
-func errorToResponse(err error) events.APIGatewayV2HTTPResponse {
+func (c UserController) errorToResponse(req events.APIGatewayV2HTTPRequest, err error) events.APIGatewayV2HTTPResponse {
 	switch {
 	case errors.Is(err, service.ErrInvalidUser):
-		return responseFromError(http.StatusBadRequest, err)
+		return logAndBuildError(req, http.StatusBadRequest, "BAD_REQUEST", err.Error(), err)
 	case errors.Is(err, repository.ErrUserNotFound):
-		return responseFromError(http.StatusNotFound, err)
+		return logAndBuildError(req, http.StatusNotFound, "NOT_FOUND", "user not found", err)
 	case errors.Is(err, repository.ErrUserAlreadyExists):
-		return responseFromError(http.StatusConflict, err)
+		return logAndBuildError(req, http.StatusConflict, "CONFLICT", "user already exists", err)
 	default:
-		return serverError(err)
+		return logAndBuildError(req, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "an internal server error occurred", err)
 	}
-}
-
-func responseFromError(statusCode int, err error) events.APIGatewayV2HTTPResponse {
-	resp, _ := jsonResponse(statusCode, errorResponse{Message: err.Error()})
-	return resp
-}
-
-func jsonResponse(statusCode int, payload any) (events.APIGatewayV2HTTPResponse, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return serverError(err), nil
-	}
-
-	return events.APIGatewayV2HTTPResponse{
-		StatusCode: statusCode,
-		Headers:    defaultHeaders(),
-		Body:       string(body),
-	}, nil
-}
-
-func serverError(err error) events.APIGatewayV2HTTPResponse {
-	body, _ := json.Marshal(errorResponse{Message: err.Error()})
-	return events.APIGatewayV2HTTPResponse{
-		StatusCode: http.StatusInternalServerError,
-		Headers:    defaultHeaders(),
-		Body:       string(body),
-	}
-}
-
-func defaultHeaders() map[string]string {
-	return map[string]string{
-		"Access-Control-Allow-Headers": "Content-Type",
-		"Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-		"Access-Control-Allow-Origin":  "*",
-		"Content-Type":                 "application/json",
-	}
-}
-
-func normalizePath(path string) string {
-	if path == "" {
-		return "/"
-	}
-	if len(path) > 1 {
-		path = strings.TrimRight(path, "/")
-	}
-	return path
 }
 
 func isUserIDPath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	return len(parts) == 2 && parts[0] == "users" && parts[1] != ""
-}
-
-func idFromRequest(path string, pathParameterID string) string {
-	if strings.TrimSpace(pathParameterID) != "" {
-		return pathParameterID
-	}
-
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) == 2 {
-		return parts[1]
-	}
-
-	return ""
 }

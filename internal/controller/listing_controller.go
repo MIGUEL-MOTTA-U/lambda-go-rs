@@ -38,77 +38,74 @@ func (c ListingController) HandleRequest(ctx context.Context, req events.APIGate
 
 	switch {
 	case method == http.MethodGet && path == "/listings":
-		return c.listListings(ctx)
+		return c.listListings(ctx, req)
 	case method == http.MethodGet && isListingIDPath(path):
-		return c.getListing(ctx, idFromRequest(path, id))
+		return c.getListing(ctx, req, idFromRequest(path, id))
 	case method == http.MethodPost && path == "/listings":
-		return c.createListing(ctx, req.Body)
+		return c.createListing(ctx, req)
 	case method == http.MethodPut && isListingIDPath(path):
-		return c.updateListing(ctx, idFromRequest(path, id), req.Body)
+		return c.updateListing(ctx, req, idFromRequest(path, id))
 	case method == http.MethodDelete && isListingIDPath(path):
-		return c.deleteListing(ctx, idFromRequest(path, id))
+		return c.deleteListing(ctx, req, idFromRequest(path, id))
 	case path == "/listings" || strings.HasPrefix(path, "/listings/"):
-		return jsonResponse(http.StatusMethodNotAllowed, errorResponse{Message: "method not allowed"})
+		return logAndBuildError(req, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil), nil
 	default:
-		return jsonResponse(http.StatusNotFound, errorResponse{Message: "route not found"})
+		return logAndBuildError(req, http.StatusNotFound, "NOT_FOUND", "route not found", nil), nil
 	}
 }
 
-func (c ListingController) listListings(ctx context.Context) (events.APIGatewayV2HTTPResponse, error) {
+func (c ListingController) listListings(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	listings, err := c.service.ListListings(ctx)
 	if err != nil {
-		return serverError(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusOK, listings)
+	return buildSuccessResponse(req, http.StatusOK, listings)
 }
 
-func (c ListingController) getListing(ctx context.Context, id string) (events.APIGatewayV2HTTPResponse, error) {
+func (c ListingController) getListing(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayV2HTTPResponse, error) {
 	listing, err := c.service.GetListing(ctx, id)
 	if err != nil {
-		return errorToListingResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusOK, listing)
+	return buildSuccessResponse(req, http.StatusOK, listing)
 }
 
-func (c ListingController) createListing(ctx context.Context, body string) (events.APIGatewayV2HTTPResponse, error) {
-	listing, err := decodeListing(body)
+func (c ListingController) createListing(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	listing, err := decodeListing(req.Body)
 	if err != nil {
-		return jsonResponse(http.StatusBadRequest, errorResponse{Message: err.Error()})
+		return logAndBuildError(req, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON request body", err), nil
 	}
 
 	createdListing, err := c.service.CreateListing(ctx, listing)
 	if err != nil {
-		return errorToListingResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusCreated, createdListing)
+	return buildSuccessResponse(req, http.StatusCreated, createdListing)
 }
 
-func (c ListingController) updateListing(ctx context.Context, id string, body string) (events.APIGatewayV2HTTPResponse, error) {
-	listing, err := decodeListing(body)
+func (c ListingController) updateListing(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayV2HTTPResponse, error) {
+	listing, err := decodeListing(req.Body)
 	if err != nil {
-		return jsonResponse(http.StatusBadRequest, errorResponse{Message: err.Error()})
+		return logAndBuildError(req, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON request body", err), nil
 	}
 
 	updatedListing, err := c.service.UpdateListing(ctx, id, listing)
 	if err != nil {
-		return errorToListingResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return jsonResponse(http.StatusOK, updatedListing)
+	return buildSuccessResponse(req, http.StatusOK, updatedListing)
 }
 
-func (c ListingController) deleteListing(ctx context.Context, id string) (events.APIGatewayV2HTTPResponse, error) {
+func (c ListingController) deleteListing(ctx context.Context, req events.APIGatewayV2HTTPRequest, id string) (events.APIGatewayV2HTTPResponse, error) {
 	if err := c.service.DeleteListing(ctx, id); err != nil {
-		return errorToListingResponse(err), nil
+		return c.errorToResponse(req, err), nil
 	}
 
-	return events.APIGatewayV2HTTPResponse{
-		StatusCode: http.StatusNoContent,
-		Headers:    defaultHeaders(),
-	}, nil
+	return buildSuccessResponse(req, http.StatusNoContent, nil)
 }
 
 func decodeListing(body string) (model.Listing, error) {
@@ -126,16 +123,16 @@ func decodeListing(body string) (model.Listing, error) {
 	return listing, nil
 }
 
-func errorToListingResponse(err error) events.APIGatewayV2HTTPResponse {
+func (c ListingController) errorToResponse(req events.APIGatewayV2HTTPRequest, err error) events.APIGatewayV2HTTPResponse {
 	switch {
 	case errors.Is(err, service.ErrInvalidListing):
-		return responseFromError(http.StatusBadRequest, err)
+		return logAndBuildError(req, http.StatusBadRequest, "BAD_REQUEST", err.Error(), err)
 	case errors.Is(err, repository.ErrListingNotFound):
-		return responseFromError(http.StatusNotFound, err)
+		return logAndBuildError(req, http.StatusNotFound, "NOT_FOUND", "listing not found", err)
 	case errors.Is(err, repository.ErrListingAlreadyExists):
-		return responseFromError(http.StatusConflict, err)
+		return logAndBuildError(req, http.StatusConflict, "CONFLICT", "listing already exists", err)
 	default:
-		return serverError(err)
+		return logAndBuildError(req, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "an internal server error occurred", err)
 	}
 }
 
